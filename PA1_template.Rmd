@@ -8,18 +8,218 @@ output:
 
 ## Loading and preprocessing the data
 
+firstly, the input data shall be unzipped and loaded into INFO variable using the following commands:
 
+The working directory, where initial files  can be founded, is defined by:
+```{r setworkingdirectory}
+wd = "F:///Data Science/Curso/Reproducible research/Tarea2/RepData_PeerAssessment1"
+setwd(wd)
+```
+
+the following packages are needed:
+```{r hidedcode, echo=TRUE, warning=FALSE}
+library("reshape")
+library("xtable")
+library("ggplot2")
+```
+
+
+
+
+then, data is loaded and prepared for further analysis:
+
+```{r loadingdata}
+zipfile = "./activity.zip"
+csvfile = "./activity.csv"
+unzip(zipfile = zipfile, overwrite = TRUE)
+info = read.csv2(file = csvfile, header = TRUE, na.strings = "NA", sep = ",")
+info$datefactor = info$date
+info$date = as.Date(info$date, "%Y-%m-%d")
+```
 
 ## What is mean total number of steps taken per day?
 
 
+NA values shall be filtered:
+
+```{r filteringna,results="hide"}
+infomeantotalsteps <- info[which(!is.na(info$steps)),]
+```
+
+then, the total number of steps is calculated by:
+``` {r printtotalsteps, results="hide",}
+totalsteps  = cast( melt(data = infomeantotalsteps, id= "date", measure.vars = "steps"),
+      date ~ variable, sum)
+```
+
+and histogram printed by:
+```{r histogram, fig.width=4, fig.height=4, warning=FALSE}
+ hist(totalsteps$steps, col="blue", xlab= "steps")
+```
+
+
+the mean and median  of the number of step is defined by:
+```{r meanoftotalstep, results= "asis", warning= FALSE}
+meansteps =  cast( melt(data = infomeantotalsteps, id= "date", measure.vars = "steps"),
+                              date ~ variable, mean)
+mediansteps = cast( melt(data = infomeantotalsteps, id= "date", measure.vars = "steps"),
+                                  date ~ variable, median)
+
+# summary variable "result"
+result = data.frame(date = as.character(totalsteps$date),
+                    total= totalsteps$steps, 
+                    median = mediansteps$steps, 
+                    mean = meansteps$steps)
+
+# print date, total, median and mean:
+print(xtable(result), type= "html")
+```
 
 ## What is the average daily activity pattern?
+The following plot shows the average steps in each interval:
+```{r figuremeanstep, fig.height=12, fig.width=12 }
 
+meanstepsbyday =  cast( melt(data = infomeantotalsteps, id= c("date","interval"), 
+                             measure.vars = "steps"), 
+                        date + interval ~ variable, mean)
 
+with(meanstepsbyday, plot(1:dim(meanstepsbyday)[1],steps, type="l", col="red", xlab="interval"))
+```
+
+And the 5-minute interval id, that on average across all days in the dataset, contains the maximum number of steps is the correspondent to the following:
+
+```{r maxdate, results="hide"}
+
+meanstepsbyday$date = factor(meanstepsbyday$date)
+
+maxintervallist = lapply(split(meanstepsbyday, meanstepsbyday$date), 
+                    function(x) c(which.max(x$steps),max(x$steps)))
+
+maxintervalmatrix = matrix(nrow=length(maxintervallist),ncol=3)
+colnames(maxintervalmatrix) = c("date", "interval_id", "max_steps")
+for (i in 1:length(maxintervallist)){
+      maxintervalmatrix[i,1]  = attributes(maxintervallist)$names[i]
+      maxintervalmatrix[i,2]  = maxintervallist[[i]][1]
+      maxintervalmatrix[i,3]  = maxintervallist[[i]][2]
+}
+
+id = which.max(maxintervalmatrix[,3])
+maxdate =maxintervalmatrix[id,1]
+maxinterval=maxintervalmatrix[id,2]
+```
+ 
+and so, the maximun number of steps is in 
+```{r}
+maxdate
+maxinterval 
+```
 
 ## Imputing missing values
+the amount of NA rows is defined as the difference between the lenght of total samples and samples without NA's, so:
+```{r numerofna}
+dim(info)[1] - dim(infomeantotalsteps)[1]
+
+```
+
+NA's values shall be replaced with the mean value for the correspondent day.if the mean was not possible to get, zero value shall be assigned:
+
+```{r resettingnavalues2, results="asis", echo=TRUE}
+## info variable is duplicated into infofilled variable, and NA values shall be replaced in infofilled.
+
+infofilled <- info
+
+for(i in 1:dim(info)[1]){
+    if (is.na(infofilled$steps[i])) {
+          if (infofilled$date[i] %in% meansteps$date) {
+                infofilled$steps[i] <- subset(meansteps,
+                                              meansteps$date==infofilled$date[i])$steps
+          } else infofilled$steps[i] <- 0
+    }
+}
+
+```
+
+now,  calculate the mean and median on infofilled variable, and plot the histogram:
+
+```{r histogramfilled, fig.width=4, fig.height=4, warning=FALSE}
+totalstepsfilled  = cast( melt(data = infofilled, id= "date",
+                               measure.vars = "steps"),
+                          date ~ variable, sum) 
+hist(totalstepsfilled$steps, col="green", xlab= "steps")
+```
+
+
+```{r meanfilled, results= "asis", warning= FALSE}
+meanstepsfilled =  cast( melt(data = infofilled, id= "date", measure.vars = "steps"),
+                              date ~ variable, mean)
+medianstepsfilled = cast( melt(data = infofilled, id= "date", measure.vars = "steps"),
+                          date ~ variable, median)
+
+# summary variable "result"
+resultfilled = data.frame(date = as.character(totalstepsfilled$date),
+                          total= totalstepsfilled$steps, 
+                          median = medianstepsfilled$steps, 
+                          mean = meanstepsfilled$steps)
+
+# print date, total, median and mean:
+print(xtable(resultfilled), type= "html")
+```
+
+As it is shown in the histogram, changing NA values for average, it makes that the lower part of the histogram is more important that if it is not changed, so its dispersion has increased.
 
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+
+```{r weekdayinfo, results= "asis", warning= FALSE}
+
+resultfilled$day = weekdays(as.Date(resultfilled$date,"%Y-%m-%d"), abbreviate= TRUE)
+
+resultfilled$weekenday <- resultfilled$day %in% c("sáb","dom")
+resultfilled$typeday = as.character(resultfilled$weekenday)
+ 
+for (i in 1:dim(resultfilled)[1]){
+    if (resultfilled[i,]$weekenday) {resultfilled[i,]$typeday = "weekend"}
+    else {resultfilled[i,]$typeday = "weekday"}
+}
+resultfilled$typeday = factor(resultfilled$typeday)
+```
+
+
+prepare the plot:
+```{r plot3, results= "asis", warning= FALSE}
+
+totalstepsfilled$day = weekdays(as.Date(totalstepsfilled$date,"%Y-%m-%d"), abbreviate= TRUE)
+
+
+totalstepsfilled$weekenday <- totalstepsfilled$day %in% c("sáb","dom")
+totalstepsfilled$typeday = as.character(totalstepsfilled$weekenday)
+ 
+for (i in 1:dim(resultfilled)[1]){
+    if (totalstepsfilled[i,]$weekenday) {totalstepsfilled[i,]$typeday = "weekend"}
+    else {totalstepsfilled[i,]$typeday = "weekday"}
+}
+totalstepsfilled$typeday = factor(totalstepsfilled$typeday)
+
+##prepare index for plotting
+totalstepsfilled$index = 1
+
+## weekend
+totalstepsfilled[totalstepsfilled$typeday==levels(totalstepsfilled$typeday)[1],]$index =   1:dim(totalstepsfilled[totalstepsfilled$typeday==levels(totalstepsfilled$typeday)[1],])
+## weekday
+totalstepsfilled[totalstepsfilled$typeday==levels(totalstepsfilled$typeday)[2],]$index =   1:dim(totalstepsfilled[totalstepsfilled$typeday==levels(totalstepsfilled$typeday)[2],])
+
+qplot(x = index,
+      y = steps,
+      data = totalstepsfilled,
+      colour = typeday) +geom_line()
+
+## solo falta grabar como html y subir a github
+```
+
+
+
+
+
+
